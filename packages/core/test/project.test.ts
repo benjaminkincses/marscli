@@ -2,7 +2,8 @@ import { describe, expect } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
-import { Effect, Layer, Stream } from "effect"
+import { Effect, Layer, Schema, Stream } from "effect"
+import { sql } from "drizzle-orm"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
@@ -69,6 +70,34 @@ describe("Project.list", () => {
           sandboxes: [],
         },
       ])
+    }),
+  )
+
+  it.effect("ignores a legacy array commands value instead of failing the whole list", () =>
+    Effect.gen(function* () {
+      const db = (yield* Database.Service).db
+      const project = yield* Project.Service
+      yield* db.run(
+        sql`INSERT INTO project (id, worktree, time_created, time_updated, time_active, sandboxes, commands) VALUES ('legacy', '/legacy', 1, 1, 2, '[]', '[]')`,
+      )
+      yield* db
+        .insert(ProjectTable)
+        .values({
+          id: Project.ID.make("current"),
+          worktree: abs("/current"),
+          commands: { start: "bun dev" },
+          sandboxes: [],
+          time_created: 2,
+          time_updated: 2,
+          time_active: 1,
+        })
+        .run()
+
+      const list = yield* project.list()
+      expect(list.map((item) => item.id)).toEqual([Project.ID.make("legacy"), Project.ID.make("current")])
+      expect(list[0]?.commands).toBeUndefined()
+      expect(list[1]?.commands).toEqual({ start: "bun dev" })
+      for (const item of list) expect(() => Schema.encodeSync(Project.Info)(item)).not.toThrow()
     }),
   )
 })
