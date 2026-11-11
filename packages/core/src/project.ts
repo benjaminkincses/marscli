@@ -109,13 +109,23 @@ function fromRow(row: typeof ProjectTable.$inferSelect): Info {
           color: row.icon_color ?? undefined,
         }
       : undefined
+  // Rows written by older builds can hold a legacy array or another non-object
+  // commands value. Treat anything that is not a commands object as no commands
+  // instead of failing the whole project list when the row is encoded.
+  const stored = row.commands
+  const commands =
+    stored && typeof stored === "object" && !Array.isArray(stored)
+      ? typeof stored.start === "string"
+        ? { start: stored.start }
+        : {}
+      : undefined
   return {
     id: row.id,
     canonical: row.worktree,
     vcs: row.vcs ?? undefined,
     name: row.name ?? undefined,
     icon,
-    commands: row.commands ?? undefined,
+    commands,
     time: {
       created: row.time_created,
       updated: row.time_updated,
